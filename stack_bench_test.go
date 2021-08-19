@@ -31,7 +31,7 @@ type benchS struct {
 func benchSMap(b *testing.B, benchS benchS) {
 	for _, m := range [...]Interface{
 		// // stack
-		&stack.LLStack{},
+		&stack.Stack{},
 		&SLStack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {

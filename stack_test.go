@@ -73,7 +73,7 @@ func applyCalls(m Interface, calls []mapCall) (results []mapResult, final map[in
 }
 
 func applyMap(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
-	var q stack.LLStack
+	var q stack.Stack
 	return applyCalls(&q, calls)
 }
 
@@ -95,7 +95,7 @@ type stackStruct struct {
 
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]Interface{
-		&stack.LLStack{},
+		&stack.Stack{},
 		&SLStack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
