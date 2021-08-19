@@ -1,6 +1,6 @@
 # stack
 
-[![Build Status](https://travis-ci.com/min1324/stack.svg?branch=main)](https://travis-ci.com/min1324/stack) [![codecov](https://codecov.io/gh/min1324/stack/branch/main/graph/badge.svg)](https://codecov.io/gh/min1324/stack) [![GoDoc](https://godoc.org/github.com/min1324/stack?status.png)](https://godoc.org/github.com/min1324/stack) [![Go Report Card](https://goreportcard.com/badge/github.com/min1324/stack)](https://goreportcard.com/report/github.com/min1324/stack)
+[![Build Status](https://travis-ci.com/min1324/stack.svg?branch=main)](https://travis-ci.com/min1324/stack) [![codecov](https://codecov.io/gh/min1324/stack/branch/main/graph/badge.svg)](https://codecov.io/gh/min1324/stack) [![Go Report Card](https://goreportcard.com/badge/github.com/min1324/stack)](https://goreportcard.com/report/github.com/min1324/stack) [![GoDoc](https://godoc.org/github.com/min1324/stack?status.png)](https://godoc.org/github.com/min1324/stack) 
 
 -----
 
