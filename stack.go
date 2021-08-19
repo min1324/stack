@@ -16,6 +16,7 @@ type Stack struct {
 	top unsafe.Pointer // point to the latest value pushed.
 }
 
+// Empty return stack if empty
 func (s *Stack) Empty() bool {
 	return atomic.LoadUint32(&s.len) == 0
 }

@@ -73,8 +73,8 @@ func applyCalls(m Interface, calls []mapCall) (results []mapResult, final map[in
 }
 
 func applyMap(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
-	var q stack.Stack
-	return applyCalls(&q, calls)
+	q := stack.New()
+	return applyCalls(q, calls)
 }
 
 func applyMutexMap(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
@@ -116,6 +116,10 @@ func TestStackInit(t *testing.T) {
 			// 初始化测试，
 			if s.Size() != 0 {
 				t.Fatalf("init size != 0 :%d", s.Size())
+			}
+
+			if !s.Empty() {
+				t.Fatalf("init not Empty")
 			}
 
 			if v, ok := s.Top(); ok || v != nil {
