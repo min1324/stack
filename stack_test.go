@@ -104,7 +104,7 @@ type stackStruct struct {
 
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]Interface{
-		&stack.Stack{},
+		&stack.LFStack{},
 		&SLStack{},
 		&stack.LAStack{},
 	} {

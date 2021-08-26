@@ -30,7 +30,7 @@ type benchStack struct {
 
 func benchSMap(b *testing.B, bench benchStack) {
 	for _, m := range [...]Interface{
-		&stack.Stack{},
+		&stack.LFStack{},
 		&stack.LAStack{},
 		&SLStack{},
 	} {

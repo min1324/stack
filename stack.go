@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	// initSize init when not provite cap,use initSize
-	initSize = 1 << 8
+	// DefaultSize init when not provite cap,use DefaultSize
+	DefaultSize = 1 << 8
 )
 
 // stackNil is used in queue to represent interface{}(nil).
@@ -16,29 +16,69 @@ const (
 // to represent nil.
 type stackNil *struct{}
 
-// New return an empty stack.
-func New() *Stack {
-	return &Stack{}
+// Stack interface
+type Stack interface {
+	Init()
+	OnceInit(cap int)
+	Cap() int
+	Empty() bool
+	Full() bool
+	Size() int
+	Push(val interface{}) bool
+	Pop() (val interface{}, ok bool)
+	Top() (val interface{}, ok bool)
 }
 
-// Stack a lock-free concurrent FILO stack.
-type Stack struct {
+// New return an empty LFStack.
+func New() Stack {
+	return &LFStack{}
+}
+
+// NewCap return an empty LAStack with init cap.
+// if cap<1,will use DefaultSize
+func NewCap(cap int) Stack {
+	var s LAStack
+	s.OnceInit(cap)
+	return &s
+}
+
+// LFStack a lock-free concurrent FILO stack.
+type LFStack struct {
 	len uint32         // stack value num.
 	top unsafe.Pointer // point to the latest value pushed.
 }
 
-// Empty return stack if empty
-func (s *Stack) Empty() bool {
+// OnceInit initialize queue use cap
+// it only execute once time.
+// if cap<1, will use DefaultSize.
+func (s *LFStack) OnceInit(cap int) {}
+
+// Init initialize queue use DefaultSize: 256
+// it only execute once time.
+func (s *LFStack) Init() {}
+
+// Cap return queue's cap
+func (s *LFStack) Cap() int {
+	return 1<<31 - 1
+}
+
+// Empty return queue if empty
+func (s *LFStack) Empty() bool {
 	return atomic.LoadUint32(&s.len) == 0
 }
 
-// Size stack element's number
-func (s *Stack) Size() int {
+// Full return queue if full
+func (s *LFStack) Full() bool {
+	return atomic.LoadUint32(&s.len) >= (1<<31 - 1)
+}
+
+// Size return current number in stack
+func (s *LFStack) Size() int {
 	return int(atomic.LoadUint32(&s.len))
 }
 
 // Push puts the given value at the top of the stack.
-func (s *Stack) Push(val interface{}) bool {
+func (s *LFStack) Push(val interface{}) bool {
 	slot := newPrtNode(val)
 	for {
 		slot.next = atomic.LoadPointer(&s.top)
@@ -52,7 +92,7 @@ func (s *Stack) Push(val interface{}) bool {
 
 // Pop removes and returns the value at the top of the stack.
 // It returns nil if the stack is empty.
-func (s *Stack) Pop() (val interface{}, ok bool) {
+func (s *LFStack) Pop() (val interface{}, ok bool) {
 	var slot *ptrNode
 	for {
 		top := atomic.LoadPointer(&s.top)
@@ -73,7 +113,7 @@ func (s *Stack) Pop() (val interface{}, ok bool) {
 
 // Top only returns the value at the top of the stack.
 // It returns nil if the stack is empty.
-func (s *Stack) Top() (val interface{}, ok bool) {
+func (s *LFStack) Top() (val interface{}, ok bool) {
 	top := atomic.LoadPointer(&s.top)
 	if top == nil {
 		return
@@ -127,7 +167,7 @@ type LAStack struct {
 func (s *LAStack) onceInit(cap int) {
 	s.once.Do(func() {
 		if cap < 1 {
-			cap = initSize
+			cap = DefaultSize
 		}
 		atomic.StoreUint32(&s.len, 0)
 		atomic.StoreUint32(&s.cap, uint32(cap))
@@ -137,15 +177,15 @@ func (s *LAStack) onceInit(cap int) {
 
 // OnceInit initialize queue use cap
 // it only execute once time.
-// if cap<1, will use 256.
+// if cap<1, will use DefaultSize.
 func (s *LAStack) OnceInit(cap int) {
 	s.onceInit(cap)
 }
 
-// Init initialize queue use default size: 256
+// Init initialize queue use DefaultSize: 256
 // it only execute once time.
 func (s *LAStack) Init() {
-	s.onceInit(initSize)
+	s.onceInit(DefaultSize)
 }
 
 // Cap return queue's cap
