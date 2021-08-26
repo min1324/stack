@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/quick"
 	"unsafe"
@@ -72,18 +70,29 @@ func applyCalls(m Interface, calls []mapCall) (results []mapResult, final map[in
 	return results, final
 }
 
-func applyMap(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
+func applyStack(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
 	q := stack.New()
 	return applyCalls(q, calls)
 }
 
-func applyMutexMap(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
+func applyMutexStack(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
 	var q SLStack
 	return applyCalls(&q, calls)
 }
 
+func applyLAStack(calls []mapCall) ([]mapResult, map[interface{}]interface{}) {
+	var q stack.LAStack
+	return applyCalls(&q, calls)
+}
+
 func TestMatchesMutex(t *testing.T) {
-	if err := quick.CheckEqual(applyMap, applyMutexMap, nil); err != nil {
+	if err := quick.CheckEqual(applyStack, applyMutexStack, nil); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestMatchesLA(t *testing.T) {
+	if err := quick.CheckEqual(applyStack, applyLAStack, nil); err != nil {
 		t.Error(err)
 	}
 }
@@ -97,9 +106,13 @@ func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]Interface{
 		&stack.Stack{},
 		&SLStack{},
+		&stack.LAStack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(Interface)
+			if s, ok := m.(*stack.LAStack); ok {
+				s.OnceInit(prevPushSize)
+			}
 			if test.setup != nil {
 				test.setup(t, m)
 			}
@@ -132,9 +145,9 @@ func TestStackInit(t *testing.T) {
 
 			// Push,Pop测试
 			p := 1
-			s.Push(p)
-			if s.Size() != 1 {
-				t.Fatalf("after Push err,size!=1,%d", s.Size())
+			b := s.Push(p)
+			if s.Size() != 1 || !b {
+				t.Fatalf("after Push err,size!=1,%d,%v", s.Size(), b)
 			}
 			if v, ok := s.Top(); !ok || v != p {
 				t.Fatalf("Push want:%d, real:%v", p, v)
@@ -190,177 +203,6 @@ func TestStackInit(t *testing.T) {
 			s.Push(null)
 			if v, ok := s.Pop(); !ok || null != v {
 				t.Fatalf("Push nil want:%v, real:%v", null, v)
-			}
-		},
-	})
-}
-
-func TestPush(t *testing.T) {
-	const maxSize = 1 << 10
-	var sum int64
-	stackMap(t, stackStruct{
-		setup: func(t *testing.T, s Interface) {
-		},
-		perG: func(t *testing.T, s Interface) {
-			sum = 0
-			for i := 0; i < maxSize; i++ {
-				if s.Push(i) {
-					atomic.AddInt64(&sum, 1)
-				}
-			}
-
-			if s.Size() != int(sum) {
-				t.Fatalf("TestConcurrentPush err,Push:%d,real:%d", sum, s.Size())
-			}
-		},
-	})
-}
-
-func TestPop(t *testing.T) {
-	const maxSize = 1 << 10
-	var sum int64
-	stackMap(t, stackStruct{
-		setup: func(t *testing.T, s Interface) {
-		},
-		perG: func(t *testing.T, s Interface) {
-			sum = 0
-			for i := 0; i < maxSize; i++ {
-				if s.Push(i) {
-					atomic.AddInt64(&sum, 1)
-				}
-			}
-
-			var dsum int64
-			for i := 0; i < maxSize; i++ {
-				_, ok := s.Pop()
-				if ok {
-					atomic.AddInt64(&dsum, 1)
-				}
-			}
-
-			if int64(s.Size())+dsum != sum {
-				t.Fatalf("TestPop err,Push:%d,Pop:%d,size:%d", sum, dsum, s.Size())
-			}
-		},
-	})
-}
-
-func TestConcurrentPush(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 8
-
-	stackMap(t, stackStruct{
-		setup: func(t *testing.T, s Interface) {
-
-		},
-		perG: func(t *testing.T, s Interface) {
-			var wg sync.WaitGroup
-			var esum int64
-			for i := 0; i < maxGo; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for i := 0; i < maxNum; i++ {
-						if s.Push(i) {
-							atomic.AddInt64(&esum, 1)
-						}
-					}
-				}()
-			}
-			wg.Wait()
-			if int64(s.Size()) != esum {
-				t.Fatalf("TestConcurrentPush err,Push:%d,real:%d", esum, s.Size())
-			}
-		},
-	})
-}
-
-func TestConcurrentPop(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 20
-	const maxSize = maxGo * maxNum
-
-	stackMap(t, stackStruct{
-		setup: func(t *testing.T, s Interface) {
-		},
-		perG: func(t *testing.T, s Interface) {
-			var wg sync.WaitGroup
-			var sum int64
-			var PushSum int64
-			for i := 0; i < maxSize; i++ {
-				if s.Push(i) {
-					PushSum += 1
-				}
-			}
-
-			for i := 0; i < maxGo; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for s.Size() > 0 {
-						_, ok := s.Pop()
-						if ok {
-							atomic.AddInt64(&sum, 1)
-						}
-					}
-				}()
-			}
-			wg.Wait()
-
-			if sum+int64(s.Size()) != int64(PushSum) {
-				t.Fatalf("TestConcurrentPush err,Push:%d,Pop:%d,size:%d", PushSum, sum, s.Size())
-			}
-		},
-	})
-}
-
-func TestConcurrentPushPop(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 10
-
-	stackMap(t, stackStruct{
-		setup: func(t *testing.T, s Interface) {
-			// if _, ok := s.(*UnsafeQueue); ok {
-			// 	t.Skip("UnsafeQueue can not test concurrent.")
-			// }
-		},
-		perG: func(t *testing.T, s Interface) {
-			var PopWG sync.WaitGroup
-			var PushWG sync.WaitGroup
-
-			exit := make(chan struct{}, maxGo)
-
-			var sumPush, sumPop int64
-			for i := 0; i < maxGo; i++ {
-				PushWG.Add(1)
-				go func() {
-					defer PushWG.Done()
-					for j := 0; j < maxNum; j++ {
-						if s.Push(j) {
-							atomic.AddInt64(&sumPush, 1)
-						}
-					}
-				}()
-				PopWG.Add(1)
-				go func() {
-					defer PopWG.Done()
-					for {
-						select {
-						case <-exit:
-							return
-						default:
-							_, ok := s.Pop()
-							if ok {
-								atomic.AddInt64(&sumPop, 1)
-							}
-						}
-					}
-				}()
-			}
-			PushWG.Wait()
-			close(exit)
-			PopWG.Wait()
-			exit = nil
-
-			if sumPop+int64(s.Size()) != sumPush {
-				t.Fatalf("TestConcurrentPushPop err,Push:%d,Pop:%d,instack:%d", sumPush, sumPop, s.Size())
 			}
 		},
 	})
