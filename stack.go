@@ -6,6 +6,14 @@ import (
 	"unsafe"
 )
 
+const (
+	// initSize init when not provite cap,use initSize
+	initSize = 1 << 8
+)
+
+// stackNil is used in queue to represent interface{}(nil).
+// Since we use nil to represent empty slots, we need a sentinel value
+// to represent nil.
 type stackNil *struct{}
 
 // New return an empty stack.
@@ -107,10 +115,6 @@ func (n *entry) free() {
 	atomic.StorePointer(&n.p, nil)
 }
 
-const (
-	initSize = 1 << 8
-)
-
 // LAStack a lock-free concurrent FILO array stack.
 type LAStack struct {
 	once sync.Once
@@ -125,52 +129,54 @@ func (s *LAStack) onceInit(cap int) {
 		if cap < 1 {
 			cap = initSize
 		}
-		s.len = 0
-		s.cap = uint32(cap)
+		atomic.StoreUint32(&s.len, 0)
+		atomic.StoreUint32(&s.cap, uint32(cap))
 		s.data = make([]entry, cap)
 	})
 }
 
-// Init初始化长度为: DefauleSize.
-func (s *LAStack) Init() {
-	s.onceInit(initSize)
-}
-
-// InitWith初始化长度为cap的queue,
-// 如果未提供，则使用默认值: DefauleSize.
+// OnceInit initialize queue use cap
+// it only execute once time.
+// if cap<1, will use 256.
 func (s *LAStack) OnceInit(cap int) {
 	s.onceInit(cap)
 }
 
+// Init initialize queue use default size: 256
+// it only execute once time.
+func (s *LAStack) Init() {
+	s.onceInit(initSize)
+}
+
+// Cap return queue's cap
 func (s *LAStack) Cap() int {
 	return int(atomic.LoadUint32(&s.cap))
 }
 
-// Size stack element's number
+// Empty return queue if empty
 func (s *LAStack) Empty() bool {
 	return atomic.LoadUint32(&s.len) == 0
 }
 
-// Size stack element's number
+// Full return queue if full
 func (s *LAStack) Full() bool {
 	return atomic.LoadUint32(&s.len) == atomic.LoadUint32(&s.cap)
 }
 
-// Size stack element's number
+// Size return current number in stack
 func (s *LAStack) Size() int {
 	return int(atomic.LoadUint32(&s.len))
 }
 
+// 根据enID,deID获取进队，出队对应的slot
 func (s *LAStack) getSlot(id uint32) *entry {
 	return &s.data[id]
 }
 
 // Push puts the given value at the top of the stack.
+// it return true if success,or false if queue full.
 func (s *LAStack) Push(val interface{}) bool {
 	s.Init()
-	if val == nil {
-		val = stackNil(nil)
-	}
 	cap := atomic.LoadUint32(&s.cap)
 	for {
 		top := atomic.LoadUint32(&s.len)
@@ -182,6 +188,9 @@ func (s *LAStack) Push(val interface{}) bool {
 			return false
 		}
 		if casUint32(&s.len, top, top+1) {
+			if val == nil {
+				val = stackNil(nil)
+			}
 			slot.store(val)
 			break
 		}
@@ -190,7 +199,7 @@ func (s *LAStack) Push(val interface{}) bool {
 }
 
 // Pop removes and returns the value at the top of the stack.
-// It returns nil if the stack is empty.
+// it return true if success,or false if stack empty.
 func (s *LAStack) Pop() (val interface{}, ok bool) {
 	s.Init()
 	var slot *entry
@@ -215,6 +224,8 @@ func (s *LAStack) Pop() (val interface{}, ok bool) {
 	return val, true
 }
 
+// Pop only returns the value at the top of the stack.
+// it return true if success,or false if stack empty.
 func (s *LAStack) Top() (val interface{}, ok bool) {
 	top := atomic.LoadUint32(&s.len)
 	if top == 0 {
