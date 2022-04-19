@@ -1,3 +1,3 @@
 module github.com/min1324/stack
 
-go 1.16
+go 1.13

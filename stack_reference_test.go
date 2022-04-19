@@ -2,8 +2,8 @@ package stack_test
 
 import (
 	"sync"
-	"sync/atomic"
-	"unsafe"
+
+	"github.com/min1324/stack"
 )
 
 // use for slice
@@ -14,94 +14,58 @@ const (
 
 )
 
-type sueueNil *struct{}
+type stackNil *struct{}
 
 // Interface use in stack,sueue testing
 type Interface interface {
-	Push(interface{}) bool
-	Pop() (interface{}, bool)
-	Top() (interface{}, bool)
-	Size() int
-	Empty() bool
+	stack.Stack
 }
 
 // 单锁无限制链表栈
 type SLStack struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
-	len uint32
 	top *listNode
-}
-
-func (s *SLStack) Empty() bool {
-	return atomic.LoadUint32(&s.len) == 0
-}
-
-func (s *SLStack) Size() int {
-	return int(atomic.LoadUint32(&s.len))
 }
 
 func (s *SLStack) Push(val interface{}) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if val == nil {
-		val = sueueNil(nil)
+		val = stackNil(nil)
 	}
-	slot := newListNode(val)
-	slot.next = s.top
-	s.top = slot
-	atomic.AddUint32(&s.len, 1)
+	s.top = &listNode{next: s.top, data: val}
 	return true
 }
 
 func (s *SLStack) Top() (val interface{}, ok bool) {
-	n := (*listNode)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.top))))
-	if n == nil {
+	if s.top == nil {
 		return
 	}
-	val = n.load()
-	return val, true
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.top == nil {
+		return
+	}
+	return s.top.data, true
 }
 
 func (s *SLStack) Pop() (val interface{}, ok bool) {
-	if s.Empty() {
+	if s.top == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Empty() {
+	if s.top == nil {
 		return
 	}
 	slot := s.top
 	s.top = slot.next
-	val = slot.load()
-	if val == sueueNil(nil) {
-		val = nil
-	}
-	slot.free()
-	atomic.AddUint32(&s.len, ^uint32(0))
-	return val, true
+	return slot.data, true
 }
 
 // 链表节点
 type listNode struct {
-	p    interface{}
+	data interface{}
 	next *listNode
-}
-
-func newListNode(i interface{}) *listNode {
-	ln := &listNode{}
-	ln.store(i)
-	return ln
-}
-func (n *listNode) load() interface{} {
-	return n.p
-}
-
-func (n *listNode) store(i interface{}) {
-	n.p = i
-}
-func (n *listNode) free() {
-	n.p = nil
-	n.next = nil
 }

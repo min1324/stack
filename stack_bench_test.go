@@ -21,7 +21,7 @@ import (
 134217728	27
 268435456	28
 */
-const prevPushSize = 1 << 23 // queue previous Push
+const prevPushSize = 1 << 20 // queue previous Push
 
 type benchStack struct {
 	setup func(*testing.B, Interface)
@@ -30,15 +30,12 @@ type benchStack struct {
 
 func benchSMap(b *testing.B, bench benchStack) {
 	for _, m := range [...]Interface{
-		&stack.LFStack{},
-		&stack.LAStack{},
+		&stack.LockFree{},
 		&SLStack{},
+		// &stack.LAStack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(Interface)
-			if s, ok := m.(*stack.LAStack); ok {
-				s.OnceInit(prevPushSize)
-			}
 			if bench.setup != nil {
 				bench.setup(b, m)
 			}
@@ -67,6 +64,22 @@ func BenchmarkPush(b *testing.B) {
 	})
 }
 
+func BenchmarkEmpty(b *testing.B) {
+	// 由于预存的数量<出队数量，无法准确测试dequeue
+	benchSMap(b, benchStack{
+		setup: func(b *testing.B, m Interface) {
+			for i := 0; i < prevPushSize; i++ {
+			}
+		},
+
+		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+			for ; pb.Next(); i++ {
+				m.Pop()
+			}
+		},
+	})
+}
+
 func BenchmarkPop(b *testing.B) {
 	// 由于预存的数量<出队数量，无法准确测试dequeue
 	benchSMap(b, benchStack{
@@ -87,7 +100,7 @@ func BenchmarkPop(b *testing.B) {
 func BenchmarkStackBalance(b *testing.B) {
 	benchSMap(b, benchStack{
 		setup: func(_ *testing.B, m Interface) {
-			for i := 0; i < prevPushSize; i++ {
+			for i := 0; i < prevPushSize/2; i++ {
 				m.Push(i)
 			}
 		},
